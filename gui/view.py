@@ -1,4 +1,3 @@
-import sys, random, model
 from PySide6 import QtWidgets, QtCore, QtGui
 
 class MyMainWindow(QtWidgets.QMainWindow):
@@ -12,28 +11,30 @@ class MyMainWindow(QtWidgets.QMainWindow):
         self.resize(self.grid_widget.size())
 
 class GridWidget(QtWidgets.QWidget):
-    def __init__(self):
+    def __init__(self, model):
         super().__init__()
 
-        self.model = model.MyDLAmodel()
+        self.model = model
         self.initialise_grid()
+
 
     
     def initialise_grid(self):
         
         self.cell_size = 6
         self.setFixedSize(self.model.cols * self.cell_size, self.model.rows * self.cell_size)
+        self.model.set_start_state()
 
-    
+    def update_view(self):
+        self.update()
 
+    def paintEvent(self, event):
+        painter = QtWidgets.QStylePainter(self)
+        for y in range(self.model.rows):
+            for x in range(self.model.cols):
+                value = self.model.grid[y][x]
+                if value == 1:
+                    painter.fillRect(x * self.cell_size, y * self.cell_size, self.cell_size, self.cell_size, QtCore.Qt.black)
+                elif value == 2:
+                    painter.fillRect(x * self.cell_size, y * self.cell_size, self.cell_size, self.cell_size, QtCore.Qt.red)
 
-
-if __name__ == "__main__":
-    app = QtWidgets.QApplication([])
-
-    widget = MyMainWindow()
-    widget.resize(600, 600)
-    widget.show()
-
-    sys.exit(app.exec())
-    
