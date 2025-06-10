@@ -17,7 +17,6 @@ class DLAController(QtCore.QObject):
 
     
     def step_model(self):
-        print("Timer running")
         self.spawn()
         self.view.update()
 
@@ -42,10 +41,6 @@ class DLAController(QtCore.QObject):
             self.model.grid[nx][ny] = 2
 
 
-    def walker_logic(self):
-        pass
-
-
     def find_terminal_nodes(self):
         grid = self.model.grid
         potential_terminals = []
@@ -63,7 +58,7 @@ class DLAController(QtCore.QObject):
                 if 0 <= nx < self.model.rows and 0 <= ny < self.model.cols:
                     if grid[nx][ny] == 0:
                         count += 1
-            if count == 7 or count == 8:
+            if count >= 5:
                 terminal_nodes.append((x, y))
 
         return terminal_nodes

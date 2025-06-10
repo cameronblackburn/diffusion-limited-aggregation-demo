@@ -1,4 +1,5 @@
 from PySide6 import QtWidgets, QtCore, QtGui
+import random
 
 class MyMainWindow(QtWidgets.QMainWindow):
     def __init__(self):
@@ -35,5 +36,5 @@ class GridWidget(QtWidgets.QWidget):
                 if value == 1:
                     painter.fillRect(x * self.cell_size, y * self.cell_size, self.cell_size, self.cell_size, QtCore.Qt.black)
                 elif value == 2:
-                    painter.fillRect(x * self.cell_size, y * self.cell_size, self.cell_size, self.cell_size, QtCore.Qt.red)
+                    painter.fillRect(x * self.cell_size, y * self.cell_size, self.cell_size, self.cell_size, QtCore.Qt.green)
 
