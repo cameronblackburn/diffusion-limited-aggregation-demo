@@ -34,7 +34,7 @@ class GridWidget(QtWidgets.QWidget):
             for x in range(self.model.cols):
                 value = self.model.grid[y][x]
                 if value == 1:
-                    painter.fillRect(x * self.cell_size, y * self.cell_size, self.cell_size, self.cell_size, QtCore.Qt.black)
+                    painter.fillRect(x * self.cell_size, y * self.cell_size, self.cell_size, self.cell_size, QtCore.Qt.red)
                 elif value == 2:
                     painter.fillRect(x * self.cell_size, y * self.cell_size, self.cell_size, self.cell_size, QtCore.Qt.green)
 

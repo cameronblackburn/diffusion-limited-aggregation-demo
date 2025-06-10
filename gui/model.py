@@ -9,6 +9,7 @@ class MyDLAmodel:
         self.cols = cols
         self.grid = [[0 for _ in range(cols)] for _ in range(rows)]
         self.seeds = []
+        self.food = []
         self.walkers = []
 
     def set_start_state(self):
@@ -17,6 +18,12 @@ class MyDLAmodel:
         y = random.randrange(self.cols)
         self.grid[x][y] = 2
         self.seeds.append(Seed(x, y))
+        
+        x = random.randrange(self.rows)
+        y = random.randrange(self.cols)
+        if self.grid[x][y] != 2:
+            self.grid[x][y] = 1
+            self.food.append(Food(x, y))
 
     def update_model(self):
         for seed in self.seeds:
@@ -29,6 +36,13 @@ class MyDLAmodel:
                 self.grid[walker.x][walker.y] = 2
                 self.seeds.append(Seed(walker.x, walker.y))
                 self.walkers.remove(walker)
+                
+class Food:
+    def __init__(self, x, y, weight=10):
+        self.x = x
+        self.y = y
+        self.weight = weight
+    
         
 class Seed:
     def __init__(self, x, y, radius=3):
