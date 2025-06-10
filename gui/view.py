@@ -23,7 +23,6 @@ class GridWidget(QtWidgets.QWidget):
         
         self.cell_size = 6
         self.setFixedSize(self.model.cols * self.cell_size, self.model.rows * self.cell_size)
-        self.model.set_start_state()
 
     def update_view(self):
         self.update()
