@@ -22,3 +22,6 @@ class MyDLAmodel:
         # Pick a random empty cell and set to 2
         x, y = random.choice(empty_cells)
         self.grid[x][y] = 2
+
+        
+        
