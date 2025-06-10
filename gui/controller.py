@@ -18,11 +18,11 @@ class DLAController(QtCore.QObject):
     
     def step_model(self):
         print("Timer running")
-        self.walker()
+        self.spawn()
         self.view.update()
 
     
-    def walker(self):
+    def spawn(self):
         grid = self.model.grid
         seeds = self.find_terminal_nodes()
         spawn = []
@@ -42,6 +42,8 @@ class DLAController(QtCore.QObject):
             self.model.grid[nx][ny] = 2
 
 
+    def walker_logic(self):
+        pass
 
 
     def find_terminal_nodes(self):
