@@ -1,7 +1,6 @@
 import random
 from PySide6 import QtCore
-from .model import Food
-
+from .model import Food, Seed, Walker
 
 DIRECTIONS = [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]
 
@@ -13,7 +12,7 @@ class DLAController(QtCore.QObject):
 
         self.food_timer = QtCore.QTimer()
         self.food_timer.timeout.connect(self.spawn_food)
-        self.food_timer.start(15000) # 15 seconds spawn food
+        self.food_timer.start(10000) # 10 seconds spawn food
 
     def initialise_timer(self):
         self.timer = QtCore.QTimer()
@@ -22,14 +21,24 @@ class DLAController(QtCore.QObject):
 
     
     def step_model(self):
-        self.spawn_walker()
+        self.model.update_model(self)
+        food_cells = [(x, y) for x in range(self.model.rows) for y in range(self.model.cols) if self.model.grid[x][y] == 1]
+        walker_cells = [(w.x, w.y) for w in self.model.walkers]
+        print(f"Food: {len(food_cells)} cells, Walkers: {len(walker_cells)}")
+        # Move all walkers
+        for walker in self.model.walkers[:]:  # Iterate over a copy
+            if walker.move(self.model, self):  # If walker gets stuck
+                self.model.grid[walker.x][walker.y] = 2
+                self.model.seeds.append(Seed(walker.x, walker.y))
+                self.model.walkers.remove(walker)
+
         self.view.update()
 
 
     
     def spawn_walker(self):
         grid = self.model.grid
-        seeds = self.find_terminal_nodes()
+        seeds = self.model.find_terminal_nodes()
         spawn_walker = []
 
         for x, y in seeds:
@@ -44,6 +53,10 @@ class DLAController(QtCore.QObject):
         for _ in range(min(3, len(spawn_walker_copy))):
             nx, ny = random.choice(spawn_walker_copy)
             spawn_walker_copy.remove((nx, ny))
+
+            seed = Seed(nx, ny)  # optional: or use existing seed at (x, y)
+            walker = Walker(nx, ny, parent=seed, controller=self)
+            self.model.walkers.append(walker)
             self.model.grid[nx][ny] = 2
 
     def spawn_food(self):
@@ -54,74 +67,40 @@ class DLAController(QtCore.QObject):
             return # Nowhere to spawn food
 
         x, y = random.choice(empty_cells)
-        new_food = Food(x, y, model=self.model, weight=random.randint(0, 15))
+        new_food = Food(x, y, model=self.model, weight=random.randint(1, 15))
+        print(f"Spawning food at ({x}, {y}) with {len(new_food.cells)} cells")
 
         self.model.food.append(new_food)
 
-    def find_terminal_nodes(self):
-        grid = self.model.grid
-        potential_terminals = []
-        terminal_nodes = []
-
-        for x in range(self.model.rows):
-            for y in range(self.model.cols):
-                if grid[x][y] == 2:
-                    potential_terminals.append((x, y))
-
-        for x, y in potential_terminals:
-            count = 0
-            for dx, dy in DIRECTIONS:
-                nx, ny = x + dx, y + dy
-                if 0 <= nx < self.model.rows and 0 <= ny < self.model.cols:
-                    if grid[nx][ny] == 0:
-                        count += 1
-            if count >= 5:
-                terminal_nodes.append((x, y))
-
-        return terminal_nodes
-
-    def move_walker(self, model):
-        target = self.closest_food(model)
-        best_dirs = []
-        
-        if target: # check if there is a food source nearby and head towards it
-            min_dist = float('inf')
-            for dx, dy in DIRECTIONS:
-                nx, ny = self.x + dx, self.y + dy
-                if 0 <= nx < model.rows and 0 <= ny < model.cols and model.grid[nx][ny] == 0:
-                    dist = abs(nx - target.x) + abs(ny - target.y)
-                    if dist < min_dist:
-                        best_dirs = [(dx, dy)]
-                        min_dist = dist
-                    elif dist == min_dist:
-                        best_dirs.append((dx, dy))
-        else: # else just travel randomly
-            best_dirs = [random.choice(DIRECTIONS)]
-        
-        
-        if best_dirs:
-                dx, dy = random.choice(best_dirs)
-                nx, ny = self.x + dx, self.y + dy
-
-                self.x, self.y = nx, ny
-                self.path.append((nx, ny))
-
-                # Check surroundings to stick
-                for dx2, dy2 in DIRECTIONS:
-                    adj_x, adj_y = nx + dx2, ny + dy2
-                    if 0 <= adj_x < model.rows and 0 <= adj_y < model.cols:
-                        if model.grid[adj_x][adj_y] != 0:
-                            self.stuck = True
-                            return True  # Stuck and becoming new seed
-
-                return False
     
-    def find_closest_food(self, model):
-        min_dist = float('inf')
-        target = None
-        for food in model.food:
-            dist = abs(self.x - food.x) + abs(self.y - food.y)
-            if dist < min_dist:
-                min_dist = dist
-                target = food
-        return target
+    def consume_food(self, start_x, start_y):
+        print(f"Consuming food at {start_x}, {start_y}")
+        grid = self.model.grid
+        visited = set()
+        queue = [(start_x, start_y)]
+
+        while queue:
+            x, y = queue.pop(0)
+            if (x, y) in visited:
+                continue
+            visited.add((x, y))
+
+            if grid[x][y] == 1:
+                grid[x][y] = 2  # Convert food to slime
+
+                # Explore adjacent food
+                for dx, dy in DIRECTIONS:
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < self.model.rows and 0 <= ny < self.model.cols:
+                        if grid[nx][ny] == 1:
+                            queue.append((nx, ny))
+
+        # Remove fully consumed food blobs
+        for food in self.model.food[:]:
+            for cell in food.cells:
+                if grid[cell[0]][cell[1]] == 2:
+                    if all(grid[x][y] == 2 for x, y in food.cells):
+                        self.model.food.remove(food)
+                    break
+        
+        print(f"food at {start_x}, {start_y} is being consumed")
