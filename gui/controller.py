@@ -12,19 +12,18 @@ class DLAController(QtCore.QObject):
 
         self.food_timer = QtCore.QTimer()
         self.food_timer.timeout.connect(self.spawn_food)
-        self.food_timer.start(20000) # 20 seconds spawn food
+        self.food_timer.start(5000) # 5 seconds spawn food
 
     def initialise_timer(self):
+        """Sim refresh rate"""
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.step_model)
         self.timer.start(100)
 
     
     def step_model(self):
+        """Refresh steps in sim"""
         self.model.update_model(self)
-        food_cells = [(x, y) for x in range(self.model.rows) for y in range(self.model.cols) if self.model.grid[x][y] == 1]
-        walker_cells = [(w.x, w.y) for w in self.model.walkers]
-        print(f"Food: {len(food_cells)} cells, Walkers: {len(walker_cells)}")
         # Move all walkers
         for walker in self.model.walkers[:]:  # Iterate over a copy
             if walker.move(self.model, self):  # If walker gets stuck
@@ -32,11 +31,15 @@ class DLAController(QtCore.QObject):
                 self.model.seeds.append(Seed(walker.x, walker.y))
                 self.model.walkers.remove(walker)
 
-        self.view.update()
+        self.view.update() # Refresh the view for the user
 
 
     
     def spawn_walker(self):
+        """Spawn walker checks the grid
+        for terminal nodes and only allows spawns
+        on those locations (non-stuck and branching)
+        """
         grid = self.model.grid
         seeds = self.model.find_terminal_nodes()
         spawn_walker = []
@@ -68,13 +71,18 @@ class DLAController(QtCore.QObject):
 
         x, y = random.choice(empty_cells)
         new_food = Food(x, y, model=self.model, weight=random.randint(1, 15))
-        print(f"Spawning food at ({x}, {y}) with {len(new_food.cells)} cells")
-
+        """After the object is created, grab the number of cells
+        that are filled and use it to determine the lifetime
+        consumption time of the object
+        """
+        num_cells = len(new_food.cells)
+        new_food.lifetime = num_cells * 20
+        new_food.consumption_time = num_cells * 10
+        new_food.decay_rate = 1
         self.model.food.append(new_food)
 
     
     def consume_food(self, start_x, start_y):
-        print(f"Consuming food at {start_x}, {start_y}")
         grid = self.model.grid
         visited = set()
         queue = [(start_x, start_y)]
@@ -102,5 +110,3 @@ class DLAController(QtCore.QObject):
                     if all(grid[x][y] == 2 for x, y in food.cells):
                         self.model.food.remove(food)
                     break
-        
-        print(f"food at {start_x}, {start_y} is being consumed")
