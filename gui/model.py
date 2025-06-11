@@ -2,7 +2,6 @@ import random, math, noise
 
 DIRECTIONS = [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]
 
-
 class MyDLAmodel:
     def __init__(self, rows=100, cols=100):
         self.rows = rows
@@ -22,9 +21,8 @@ class MyDLAmodel:
         x = random.randrange(self.rows)
         y = random.randrange(self.cols)
         if self.grid[x][y] != 2:
-            weight = random.randint(0, 15)
             self.grid[x][y] = 1
-            self.food.append(Food(x, y, self, weight))
+            self.food.append(Food(x, y, self, weight=random.randint(0, 15)))
 
     def update_model(self):
         for seed in self.seeds:
@@ -44,12 +42,12 @@ class Food:
         self.x = x
         self.y = y
         self.weight = weight
-        self.size = math.ceil(weight / 2)
+        self.radius = math.ceil(weight / 2)
         self.model = model
-        self.radius = self.size
         self.lifetime = 10
         self.cells = []
         
+        """Randomising the shape of the food"""
         scale = 0.1       # Controls noise frequency
         threshold = 0.1   # Controls how "solid" the blob is
 
@@ -69,9 +67,6 @@ class Food:
                         if model.grid[nx][ny] == 0:
                             model.grid[nx][ny] = 1
                             self.cells.append((nx, ny))
-        
-        if not self.cells:
-            self.lifetime = 0  # Ensure this food dies quickly
     
         
 class Seed:
@@ -93,53 +88,6 @@ class Walker:
         self.parent = parent
         self.path = [(x, y)]
         self.stuck = False
-        
-    def move(self, model):
-        target = self.closest_food(model)
-        best_dirs = []
-        
-        if target:
-            min_dist = float('inf')
-            for dx, dy in DIRECTIONS:
-                nx, ny = self.x + dx, self.y + dy
-                if 0 <= nx < model.rows and 0 <= ny < model.cols and model.grid[nx][ny] == 0:
-                    dist = abs(nx - target.x) + abs(ny - target.y)
-                    if dist < min_dist:
-                        best_dirs = [(dx, dy)]
-                        min_dist = dist
-                    elif dist == min_dist:
-                        best_dirs.append((dx, dy))
-            else:
-                best_dirs = [random.choice(DIRECTIONS)]
-        
-        
-        if best_dirs:
-                dx, dy = random.choice(best_dirs)
-                nx, ny = self.x + dx, self.y + dy
-
-                self.x, self.y = nx, ny
-                self.path.append((nx, ny))
-
-                # Check surroundings to stick
-                for dx2, dy2 in DIRECTIONS:
-                    adj_x, adj_y = nx + dx2, ny + dy2
-                    if 0 <= adj_x < model.rows and 0 <= adj_y < model.cols:
-                        if model.grid[adj_x][adj_y] != 0:
-                            self.stuck = True
-                            return True  # Stuck and becoming new seed
-
-                return False
-    
-    def closest_food(self, model):
-        min_dist = float('inf')
-        target = None
-        for food in model.food:
-            dist = abs(self.x - food.x) + abs(self.y - food.y)
-            if dist < min_dist:
-                min_dist = dist
-                target = food
-        return target
-        
-
+        self.controller.move(model)
         
         
