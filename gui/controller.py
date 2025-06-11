@@ -12,7 +12,7 @@ class DLAController(QtCore.QObject):
 
         self.food_timer = QtCore.QTimer()
         self.food_timer.timeout.connect(self.spawn_food)
-        self.food_timer.start(10000) # 10 seconds spawn food
+        self.food_timer.start(20000) # 20 seconds spawn food
 
     def initialise_timer(self):
         self.timer = QtCore.QTimer()

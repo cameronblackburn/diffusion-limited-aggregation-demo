@@ -11,25 +11,21 @@ class MyDLAmodel:
         self.food = []
         self.walkers = []
 
-    def set_start_state(self):
+    def set_start_state(self, controller):
         """Set a random starting node"""
         x = random.randrange(self.rows)
         y = random.randrange(self.cols)
         self.grid[x][y] = 2
         self.seeds.append(Seed(x, y))
         
-        x = random.randrange(self.rows)
-        y = random.randrange(self.cols)
-        if self.grid[x][y] != 2:
-            self.grid[x][y] = 1
-            self.food.append(Food(x, y, self, weight=random.randint(1, 15)))
+        controller.spawn_food()
 
     def update_model(self, controller):
         terminal_positions = self.find_terminal_nodes()
         active_seeds = [seed for seed in self.seeds if (seed.x, seed.y) in terminal_positions]
 
         for seed in active_seeds:
-            # if random.random() < 0.1:
+             if random.random() < 0.2:
             #     print("Spawning walker with tiny chance!")
                 walker = seed.spawn_walker(self, controller)
                 self.walkers.append(walker)
@@ -63,7 +59,10 @@ class MyDLAmodel:
 
     def update_food_consumption(self):
         for food in self.food[:]:
+            print(f"Food at {food.x}, {food.y} has detectable range of {food.detectable_range}")
+            print(f"Food at {food.x}, {food.y} has weight of {food.weight} and radius of {food.radius}")
             print(f"Checking food at {food.x}, {food.y} — being_consumed={food.being_consumed}")
+            print(f"Food at ({food.x},{food.y}) is {food.consumption_progress_ratio:.2%} consumed")
             if food.being_consumed:
                 print(f"food at {food.x}, {food.y} is being consumed by new method")
                 food.consumption_progress += len(food.consumers)
@@ -88,10 +87,12 @@ class Food:
         self.lifetime = 10
         self.cells = []
 
-        self.consumption_time = self.weight * 100
+        self.consumption_time = self.weight * 50
         self.consumption_progress = 0
         self.being_consumed = False
         self.consumers = set()
+        
+        self.detectable_range = int(self.radius + self.weight * 1.5)
         
         """Randomising the shape of the food"""
         scale = 0.1       # Controls noise frequency
@@ -113,7 +114,9 @@ class Food:
                         if model.grid[nx][ny] == 0:
                             model.grid[nx][ny] = 1
                             self.cells.append((nx, ny))
-    
+    @property
+    def consumption_progress_ratio(self):
+        return self.consumption_progress / self.consumption_time
         
 class Seed:
     def __init__(self, x, y, radius=3):
@@ -134,8 +137,29 @@ class Walker:
         self.parent = parent
         self.path = [(x, y)]
         self.stuck = False
+        self.consumption_time = 0
+        self.detection_radius = 20
         
     def move(self, model, controller):
+
+        if self.stuck:
+            self.consumption_ticks += 1
+
+            # After some ticks stuck, unstick to seek new food
+            if self.consumption_ticks > 50:  # tweak this threshold as needed
+                food_obj = self.find_food_consumed(model)
+                if food_obj:
+                    food_obj.consumers.discard(self)
+                    if len(food_obj.consumers) == 0:
+                        food_obj.being_consumed = False
+                        food_obj.weight = food_obj.weight or 1  # restore weight if needed
+                self.stuck = False
+                self.consumption_ticks = 0
+
+            else:
+                # still consuming - no move
+                return False  
+
         target = self.closest_food(model)
         best_dirs = []
 
@@ -161,36 +185,59 @@ class Walker:
             self.x, self.y = nx, ny
             self.path.append((nx, ny))
 
+            for food in model.food:
+                # Calculate distance from walker to food center
+                dist = math.sqrt((self.x - food.x)**2 + (self.y - food.y)**2)
+                if dist <= food.radius:
+                    # If inside radius, mark as being consumed
+                    food.being_consumed = True
+                    food.consumers.add(self)
+                    # self.stuck = True
+                    print(f"Walker inside radius of food at ({food.x}, {food.y}), consuming")
+                    return True
+
             # Check surroundings to stick
             for dx2, dy2 in DIRECTIONS:
                 adj_x, adj_y = nx + dx2, ny + dy2
                 if 0 <= adj_x < model.rows and 0 <= adj_y < model.cols:
                     val = model.grid[adj_x][adj_y]
                     if val != 0:
-                        self.stuck = True
                         if val == 1:
-                            food_obj = self.find_foot_at(adj_x, adj_y, model)
+                            food_obj = self.find_food_at(adj_x, adj_y, model)
+                            print(f"Found food_obj: {food_obj} at ({adj_x}, {adj_y})")
                             if food_obj:
                                 food_obj.being_consumed = True
                                 food_obj.consumers.add(self)
+                                food_obj.weight = 0
                             self.stuck = True
                             print(f"Walker consuming food at ({adj_x}, {adj_y}) — calling consume")
                         return True
         return False
 
-    def find_foot_at(self, x, y, model):
+    def find_food_at(self, x, y, model):
         for food in model.food:
             if(x, y) in food.cells:
                 return food
         return None
 
+    def find_food_consumed(self, model):
+        # Find the food this walker is consuming (stuck to)
+        for food in model.food:
+            if self in food.consumers:
+                return food
+        return None
+
     def closest_food(self, model):
-        min_dist = float('inf')
+        best_score = float('inf')
         target = None
         for food in model.food:
-            dist = abs(self.x - food.x) + abs(self.y - food.y)
-            if dist < min_dist:
-                min_dist = dist
-                target = food
+            dist = math.sqrt((self.x - food.x)**2 + (self.y - food.y)**2)
+            if dist <= food.detectable_range:
+                # Avoid division by zero:
+                weight = food.weight if food.weight > 0 else 1
+                score = dist / weight
+                if score < best_score:
+                    best_score = score
+                    target = food
         return target
         
