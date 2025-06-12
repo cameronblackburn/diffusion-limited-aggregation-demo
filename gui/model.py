@@ -10,6 +10,7 @@ class MyDLAmodel:
         self.seeds = []
         self.food = []
         self.walkers = []
+        self.pathways = []
 
     def set_start_state(self, controller):
         """Set a random starting node"""
@@ -25,27 +26,26 @@ class MyDLAmodel:
         active_seeds = [seed for seed in self.seeds if (seed.x, seed.y) in terminal_positions]
 
         for seed in active_seeds:
-             if random.random() < 0.2: # 20% chance of spawn per tick to slow down spawn rate
+             if random.random() < 1:
                 walker = seed.spawn_walker(self, controller)
                 self.walkers.append(walker)
 
 
         for walker in self.walkers[:]:
             if walker.move(self, controller):
-                self.grid[walker.x][walker.y] = 2
-                self.seeds.append(Seed(walker.x, walker.y))
+                if 0 <= walker.x < self.rows and 0 <= walker.y < self.cols:
+                    self.grid[walker.x][walker.y] = 2
+                    self.seeds.append(Seed(walker.x, walker.y))
+                else:
+                    print(f"Walker out of bounds after move: ({walker.x}, {walker.y})")
                 self.walkers.remove(walker)
-        
-        
-        for food in list(self.food):
-            if not food.being_consumed: # check its being eaten
-                food.lifetime -= food.decay_rate
-            if food.lifetime <= 0: #if the lifetime of the object is <= 0 
-                                    # then remove it and set the grid to empty
-                for fx, fy in food.cells:
-                    self.grid[fx][fy] = 0
-                self.food.remove(food)
-                    
+
+                
+        for path in self.pathways[:]:
+            alive = path.update(self)
+            if not alive:
+                self.grid[path.x][path.y] = 0
+                self.pathways.remove(path)
 
         self.update_food_consumption()
 
@@ -83,34 +83,15 @@ class MyDLAmodel:
                 
 class Food:
     def __init__(self, x, y, model, weight=None):
-        """Food Object
-        (x, y) coordinates
-        The weight of the food, this is used for pathfinding
-        the radius is dependent on the weight. This is to simulate
-        that a higher weight likely means a larger food source
-        (Although the cells of the food source are randomised)
-
-        Lifetime determines object lifetime which is decayed by
-        decay_rate
-        
-        Food object keeps track of how long it takes to consume
-        consumption progress
-        whether the food is being eaten
-        and a list of the total consumers (to use as coef)
-        
-        Detectable range is used to help prevent walkers from
-        heading straight to food source
-        """
         self.x = x
         self.y = y
         self.weight = weight
         self.radius = math.ceil(weight / 2)
         self.model = model
-        self.lifetime = None
-        self.decay_rate = None
+        self.lifetime = 10
         self.cells = []
 
-        self.consumption_time = weight * 50
+        self.consumption_time = self.weight * 50
         self.consumption_progress = 0
         self.being_consumed = False
         self.consumers = set()
@@ -137,35 +118,29 @@ class Food:
                         if model.grid[nx][ny] == 0:
                             model.grid[nx][ny] = 1
                             self.cells.append((nx, ny))
-        
-            # See if spawned near slime or seed to auto-trigger consumption
-            for dx in range(-self.radius, self.radius + 1):
-                for dy in range(-self.radius, self.radius + 1):
-                    nx = self.x + dx
-                    ny = self.y + dy
-                    if 0 <= nx < model.rows and 0 <= ny < model.cols:
-                        if model.grid[nx][ny] == 2:
-                            self.being_consumed = True
-                            
-                            # Add a dummy "ghost" consumer to simulate consumption
-                            class GhostWalker:
-                                def __init__(self, x, y):
-                                    self.x = x
-                                    self.y = y
-                            self.consumers.add(GhostWalker(nx, ny))
 
-                            break  # one consumer is enough to start
-                if self.being_consumed:
-                    break
-        
+        for dx in range(-self.radius, self.radius + 1):
+            for dy in range(-self.radius, self.radius + 1):
+                nx = self.x + dx
+                ny = self.y + dy
+                if 0 <= nx < model.rows and 0 <= ny < model.cols:
+                    if model.grid[nx][ny] == 2:
+                        self.being_consumed = True
+                        
+                        # Add a dummy "ghost" consumer to simulate consumption
+                        class GhostWalker:
+                            def __init__(self, x, y):
+                                self.x = x
+                                self.y = y
+                        self.consumers.add(GhostWalker(nx, ny))
+
+                        break  # one consumer is enough to start
+            if self.being_consumed:
+                break        
+
+
 class Seed:
     def __init__(self, x, y, radius=3):
-        """Seed spawn location
-        (x, y) location to spawn
-        the radius dictates how many walkers can spawn on a given
-        seed, each seed tracks its walkers to ensure it does
-        not spawn too many
-        """
         self.x = x
         self.y = y
         self.radius = radius
@@ -178,29 +153,20 @@ class Seed:
     
 class Walker:
     def __init__(self, x, y, parent=None, controller=None):
-        """Walker calss keeos track of it's (x, y) coords
-        and the coords of it's path (for rendering)
-        the walker will check when it is stuck
-        """
         self.x = x
         self.y = y
         self.parent = parent
         self.path = [(x, y)]
         self.stuck = False
         self.consumption_time = 0
+        self.detection_radius = 20
         
     def move(self, model, controller):
-        """Movement logic
-        walker will move randomly as per DLA
-        and will stick to self or food source
-        if the walker finds a food source nearby it will head
-        in the direction of it and stick, to begin consuming
-        """
 
         target = self.closest_food(model)
         best_dirs = []
 
-        if target: # Found food
+        if target:
             min_dist = float('inf')
             for dx, dy in DIRECTIONS:
                 nx, ny = self.x + dx, self.y + dy
@@ -211,26 +177,30 @@ class Walker:
                         min_dist = dist
                     elif dist == min_dist:
                         best_dirs.append((dx, dy))
-        else: # Just move
+        else:
             best_dirs = [random.choice(DIRECTIONS)]
 
-        if best_dirs: # If the walker is moving then append the movements to the path
+        if best_dirs:
             dx, dy = random.choice(best_dirs)
             nx, ny = self.x + dx, self.y + dy
 
+            # Check bounds before applying move
+            if not (0 <= nx < model.rows and 0 <= ny < model.cols):
+                print(f"Walker out of bounds: ({nx}, {ny})")
+                return True  # Mark for removal in update_model
+
             self.x, self.y = nx, ny
-            self.path.append((nx, ny))
+            model.grid[self.x][self.y] = 3
+            model.pathways.append(Path(self.x, self.y))
 
             for food in model.food:
-                # Calculate distance from walker to food center
                 dist = math.sqrt((self.x - food.x)**2 + (self.y - food.y)**2)
                 if dist <= food.radius:
-                    # If inside radius, mark as being consumed
                     food.being_consumed = True
                     food.consumers.add(self)
                     return True
+                    
 
-            # Check surroundings to stick
             for dx2, dy2 in DIRECTIONS:
                 adj_x, adj_y = nx + dx2, ny + dy2
                 if 0 <= adj_x < model.rows and 0 <= adj_y < model.cols:
@@ -253,26 +223,49 @@ class Walker:
         return None
 
     def find_food_consumed(self, model):
-        """Helper to find the food the walker is stuck to
-        """
+        # Find the food this walker is consuming (stuck to)
         for food in model.food:
             if self in food.consumers:
                 return food
         return None
 
     def closest_food(self, model):
-        """Finding the clsoest food to return as
-        the target
-        """
         best_score = float('inf')
         target = None
         for food in model.food:
-            dist = math.sqrt((self.x - food.x)**2 + (self.y - food.y)**2) # Euclidean distance
+            dist = math.sqrt((self.x - food.x)**2 + (self.y - food.y)**2)
             if dist <= food.detectable_range:
                 # Avoid division by zero:
                 weight = food.weight if food.weight > 0 else 1
-                score = dist / weight # Pathfinding weight is determined by distance and food weight
+                score = dist / weight
                 if score < best_score:
                     best_score = score
                     target = food
         return target
+
+class Path:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.lifetime = 100
+        self.hunger = 100
+
+    def update(self, model):
+        near_food = False
+        for food in model.food:
+            for fx, fy in food.cells:
+                if abs(self.x -fx) <= 3 and abs(self.y - fy) <= 3: # Check radius of 3 for food
+                    near_food = True
+                    break
+            if near_food:
+                break
+        
+        if near_food:
+            self.hunger = min(self.hunger + 1, 10)
+        else:
+            self.hunger -= 1
+        
+        if self.hunger <= 0:
+            self.lifetime -= 1
+        
+        return self.lifetime > 0
